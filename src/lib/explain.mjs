@@ -27,7 +27,7 @@ export function formatExplanation(status) {
 
   const m = status.metrics ?? {};
   const request = status.jev?.request?.state;
-  const recommendation = status.jev?.response?.answers?.model_tier?.choice ?? status.tier ?? "unknown";
+  const recommendation = status.jevTier ?? status.tier ?? "unknown";
   return [
     `┌${"─".repeat(WIDTH)}┐`,
     row("Jev Router"),

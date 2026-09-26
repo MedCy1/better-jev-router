@@ -53,6 +53,7 @@ test("routeTurn consults the router, applies policy, resolves the exact model, a
   assert.deepEqual(routeInput.models, models);
   assert.equal(decision.tier, "opus");
   assert.equal(decision.model, "test-opus-v2");
+  assert.equal(decision.jevTier, "opus");
   assert.equal(decision.reason, "jev");
   assert.equal(decision.confidence, 0.91);
   assert.equal(typeof decision.at, "number");
@@ -60,6 +61,7 @@ test("routeTurn consults the router, applies policy, resolves the exact model, a
   const recorded = readStatus(statusId);
   assert.equal(recorded.prompt, "Refactor the parser safely");
   assert.equal(recorded.model, "test-opus-v2");
+  assert.equal(recorded.jevTier, "opus");
   assert.equal(recorded.history.length, 1);
   assert.match(formatExplanation(recorded), /Selected model: TEST-OPUS-V2/);
 });
@@ -79,6 +81,8 @@ test("routeTurn keeps the current exact model when policy rejects a low-confiden
   assert.equal(decision.tier, "opus");
   assert.equal(decision.model, "test-opus-current");
   assert.match(decision.reason, /low-confidence-no-downgrade/);
+  // Jev still recommended haiku; policy just refused to act on it. jev-explain needs both.
+  assert.equal(decision.jevTier, "haiku");
 });
 
 test("routeTurn degrades safely to the current model when the router returns null", async () => {

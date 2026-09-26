@@ -58,6 +58,10 @@ export async function routeTurn({
   const decision = {
     tier,
     model,
+    // The tier Jev actually chose, before policy may override it (low confidence, cache
+    // guard, unavailable tier, ...). `jev-explain` shows this next to the selected tier so a
+    // disagreement between the two is visible instead of always echoing the final choice.
+    jevTier: chosen?.tier ?? null,
     reason: policy.reason,
     confidence: jevAnswer?.confidence ?? null,
     metrics: jevAnswer?.metrics ?? null,
@@ -70,6 +74,7 @@ export async function routeTurn({
       tier,
       prompt,
       model,
+      jevTier: decision.jevTier,
       confidence: decision.confidence,
       metrics: decision.metrics,
       reason: decision.reason,

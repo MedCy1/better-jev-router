@@ -341,6 +341,60 @@ test("proxy preserves Codex auth, picker, routing, and native decision output", 
   assert.equal(readStatus(statusId).metrics.reasoningRequired, 0.91);
 });
 
+test("duplicate same-tier models in the account catalog don't split Jev's vote (#49)", async (t) => {
+  const upstream = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      if (req.url.startsWith("/backend-api/codex/models")) {
+        res.setHeader("content-type", "application/json");
+        return res.end(JSON.stringify({
+          // The issue's own catalog: two "luna" models both reading as haiku, and two "sol"
+          // models both reading as opus.
+          models: [
+            { slug: "gpt-5.6-luna", supported_in_api: true },
+            { slug: "gpt-6-luna", supported_in_api: true },
+            { slug: "gpt-5.6-terra", supported_in_api: true },
+            { slug: "gpt-5.6-sol", supported_in_api: true },
+            { slug: "gpt-6-sol", supported_in_api: true },
+          ],
+        }));
+      }
+      res.end('event: response.completed\ndata: {"type":"response.completed"}\n\n');
+    });
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  t.after(() => upstream.close());
+  const upstreamURL = `http://127.0.0.1:${upstream.address().port}`;
+
+  let seenModels;
+  const { port, close } = await startCodexProxy({
+    chatgptBaseURL: `${upstreamURL}/backend-api/codex`,
+    apiBaseURL: `${upstreamURL}/v1`,
+    route: async ({ models }) => {
+      seenModels = models.map((model) => model.id);
+      return { choice: "gpt-5.6-luna", confidence: 0.98 };
+    },
+  });
+  t.after(close);
+  const headers = { authorization: "Bearer subscription-token", "chatgpt-account-id": "acct" };
+
+  await fetch(`http://127.0.0.1:${port}/models?client_version=1`, { headers });
+  await fetch(`http://127.0.0.1:${port}/responses`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "jev-router",
+      input: [
+        { type: "additional_tools", role: "developer", tools: [{}] },
+        { role: "user", content: [{ type: "input_text", text: "Reply with just: pong." }] },
+      ],
+    }),
+  });
+
+  assert.deepEqual(seenModels, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"], "one candidate per tier");
+});
+
 test("Codex proxy shutdown closes active client connections", async (t) => {
   const upstream = http.createServer((_req, res) => {
     res.writeHead(200, { "content-type": "text/plain" });

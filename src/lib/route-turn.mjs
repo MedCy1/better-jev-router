@@ -4,6 +4,19 @@ import { askJev } from "./router.mjs";
 import { writeDecision } from "./status.mjs";
 
 /**
+ * One candidate per tier: the configured model for that tier when it's present in `models`,
+ * otherwise the first candidate of that tier in catalog order (#49).
+ */
+function dedupeByTier(models, getDefaultModel) {
+  return Object.values(
+    models.reduce((byTier, model) => {
+      if (!byTier[model.tier] || model.id === getDefaultModel?.(model.tier)) byTier[model.tier] = model;
+      return byTier;
+    }, {}),
+  );
+}
+
+/**
  * Route one new user turn without assuming any harness or wire protocol.
  *
  * `getDefaultModel` is needed only when policy lands on a different tier without accepting
@@ -31,11 +44,21 @@ export async function routeTurn({
   contextWindow,
   statusId = "",
   getDefaultModel = (tier) => models.find((model) => model.tier === tier)?.id,
+  // Whether several models mapped to the same tier are meaningfully different choices for
+  // Jev (Claude: claude-opus-5 vs claude-opus-4-8, a real version tradeoff) or duplicates
+  // that should collapse to one candidate before Jev sees them (Codex's account catalog can
+  // list several same-capability models per tier, which would otherwise split the vote
+  // across them — see dedupeSameTierModels below). Off by default to match every existing
+  // caller's behavior; only the Codex adapter turns it on.
+  dedupeSameTierModels = false,
   route = askJev,
 }) {
   // Disabled tiers are not offered to Jev, matching the proxy's historical behavior.
-  const routedModels = models.filter((model) => availableTiers().includes(model.tier));
-  const available = [...new Set(routedModels.map((model) => model.tier))];
+  const enabledModels = models.filter((model) => availableTiers().includes(model.tier));
+  const routedModels = dedupeSameTierModels
+    ? dedupeByTier(enabledModels, getDefaultModel)
+    : enabledModels;
+  const available = [...new Set(enabledModels.map((model) => model.tier))];
 
   const jevAnswer = await route({
     prompt,

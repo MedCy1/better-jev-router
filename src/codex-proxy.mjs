@@ -190,6 +190,11 @@ function createCodexAdapter(catalogMap, chatgptBaseURL) {
     contextWindow: 128000, // Codex context window
     upstreamURL: CHATGPT_BASE_URL,
     statusId: "", // Will be set by startCodexProxy
+    // The account catalog can map several same-capability models to one tier (two
+    // "luna"-family models both reading as haiku, say). Unlike Claude's model versions,
+    // these aren't a meaningful choice for Jev — offering both only splits its vote so
+    // neither clears minConfidence, holding trivial turns on the strong tier (#49).
+    dedupeSameTierModels: true,
 
     isRoutingRequest(req, body) {
       return req.method === "POST" && /\/responses(?:\?|$)/.test(req.url ?? "") && body.model === CODEX_AUTO_MODEL;

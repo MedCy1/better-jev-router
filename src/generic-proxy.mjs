@@ -34,6 +34,11 @@ const debug = (line) => process.env.JEV_DEBUG && log(line);
  *     body.model (for example Codex's routing hint, only sent to its ChatGPT backend).
  *   - contextWindow: input tokens for the current tier, as a fixed number or a
  *     (tier) => number resolver, for harnesses whose tiers don't share a context window.
+ *   - dedupeSameTierModels (optional): true when several models mapped to the same tier are
+ *     interchangeable duplicates, not a meaningful choice — collapses them to one candidate
+ *     before Jev sees them, so its vote isn't split across near-identical options (#49, Codex).
+ *     Leave unset when different models in a tier are a real tradeoff (Claude's model
+ *     versions within one tier).
  *   - statusId (optional): A fixed id or (body, conversationKey) → id for status writes.
  *
  * upstreamURL may be a fixed string or a (req) → string resolver.
@@ -120,6 +125,7 @@ export async function genericProxy({
                   ? adapter.contextWindow(current)
                   : adapter.contextWindow,
               statusId: statusKey,
+              dedupeSameTierModels: adapter.dedupeSameTierModels ?? false,
               getDefaultModel: (tier) => adapter.getDefaultModel?.(tier),
               route: async (input) => (jev = await route(input)),
             });

@@ -128,3 +128,73 @@ test("routeTurn never offers the router a tier the operator has disabled", async
   assert.equal(seen.includes("fable"), false, "a disabled tier must never reach the router");
   assert.deepEqual(seen, ["haiku", "sonnet", "opus"]);
 });
+
+test("dedupeSameTierModels collapses same-tier duplicates so Jev's vote isn't split (#49)", async () => {
+  // The issue's own catalog: two "luna" models both reading as haiku, and two "sol" models
+  // both reading as opus, alongside the configured defaults.
+  const duplicated = [
+    { id: "gpt-5.6-luna", tier: "haiku" },
+    { id: "gpt-6-luna", tier: "haiku" },
+    { id: "gpt-5.6-terra", tier: "sonnet" },
+    { id: "gpt-5.6-sol", tier: "opus" },
+    { id: "gpt-6-sol", tier: "opus" },
+  ];
+  const codexDefaults = { haiku: "gpt-5.6-luna", sonnet: "gpt-5.6-terra", opus: "gpt-5.6-sol" };
+  const seen = [];
+  await routeTurn({
+    prompt: "Reply with just the word: pong.",
+    current: "opus",
+    currentModel: "gpt-6-sol",
+    models: duplicated,
+    contextTokens: 50,
+    dedupeSameTierModels: true,
+    getDefaultModel: (tier) => codexDefaults[tier],
+    route: async ({ models: offered }) => {
+      seen.push(...offered.map((model) => model.id));
+      return { choice: "gpt-5.6-luna", confidence: 0.98 };
+    },
+  });
+
+  assert.deepEqual(seen, ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"], "one candidate per tier");
+});
+
+test("dedupeSameTierModels prefers the configured model, else the first candidate in catalog order", async () => {
+  const seen = [];
+  await routeTurn({
+    prompt: "task",
+    current: "opus",
+    currentModel: "gpt-6-sol",
+    // Configured default for opus ("gpt-5.6-sol") is not first in catalog order, but must
+    // still win over "gpt-6-sol".
+    models: [{ id: "gpt-6-sol", tier: "opus" }, { id: "gpt-5.6-sol", tier: "opus" }],
+    contextTokens: 50,
+    dedupeSameTierModels: true,
+    getDefaultModel: (tier) => ({ opus: "gpt-5.6-sol" })[tier],
+    route: async ({ models: offered }) => {
+      seen.push(...offered.map((model) => model.id));
+      return null;
+    },
+  });
+
+  assert.deepEqual(seen, ["gpt-5.6-sol"]);
+});
+
+test("without dedupeSameTierModels, same-tier models still reach the router as separate choices", async () => {
+  // Claude's model versions within one tier (claude-opus-5 vs claude-opus-4-8) are a real
+  // choice for Jev, not duplicates — the default behavior must keep offering both.
+  const seen = [];
+  await routeTurn({
+    prompt: "task",
+    current: "opus",
+    currentModel: "claude-opus-5",
+    models: [{ id: "claude-opus-5", tier: "opus" }, { id: "claude-opus-4-8", tier: "opus" }],
+    contextTokens: 50,
+    getDefaultModel: (tier) => defaults[tier],
+    route: async ({ models: offered }) => {
+      seen.push(...offered.map((model) => model.id));
+      return null;
+    },
+  });
+
+  assert.deepEqual(seen, ["claude-opus-5", "claude-opus-4-8"]);
+});

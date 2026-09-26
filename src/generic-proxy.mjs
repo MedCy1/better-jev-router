@@ -6,6 +6,7 @@ import { routeTurn } from "./lib/route-turn.mjs";
 import { log } from "./lib/log.mjs";
 import { writeStatus } from "./lib/status.mjs";
 import { validateAdapter } from "./adapters/index.mjs";
+import { estimateContextTokens } from "./lib/context-estimate.mjs";
 
 const debug = (line) => process.env.JEV_DEBUG && log(line);
 
@@ -31,7 +32,8 @@ const debug = (line) => process.env.JEV_DEBUG && log(line);
  *   - decorateRequestHeaders(headers, body, upstreamURL) → void (optional): Add outbound
  *     headers once the final request body is known — after applyTier has rewritten
  *     body.model (for example Codex's routing hint, only sent to its ChatGPT backend).
- *   - contextWindow: tokens in the harness's context (200000 for Anthropic, etc).
+ *   - contextWindow: input tokens for the current tier, as a fixed number or a
+ *     (tier) => number resolver, for harnesses whose tiers don't share a context window.
  *   - statusId (optional): A fixed id or (body, conversationKey) → id for status writes.
  *
  * upstreamURL may be a fixed string or a (req) → string resolver.
@@ -98,7 +100,7 @@ export async function genericProxy({
 
           if (prompt && !explaining) {
             const currentModel = state.model ?? adapter.getDefaultModel?.(current);
-            const contextTokens = Math.round(JSON.stringify(body.messages ?? body.input ?? "").length / 4);
+            const contextTokens = estimateContextTokens(body);
             const statusKey =
               typeof adapter.statusId === "function"
                 ? adapter.statusId(body, key)
@@ -113,7 +115,10 @@ export async function genericProxy({
               // turn of a conversation has none yet, however large its opening message is
               // (Claude Code injects CLAUDE.md and hook output into it).
               contextTokens: state.tier ? contextTokens : 0,
-              contextWindow: adapter.contextWindow,
+              contextWindow:
+                typeof adapter.contextWindow === "function"
+                  ? adapter.contextWindow(current)
+                  : adapter.contextWindow,
               statusId: statusKey,
               getDefaultModel: (tier) => adapter.getDefaultModel?.(tier),
               route: async (input) => (jev = await route(input)),

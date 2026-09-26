@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isAuto } from "./lib/config.mjs";
-import { TIERS, tierOf, idOf, tierSpec, CONTEXT_WINDOW_TOKENS } from "./lib/tiers/claude.mjs";
+import { TIERS, tierOf, idOf, tierSpec, contextWindowOf } from "./lib/tiers/claude.mjs";
 import { genericProxy } from "./generic-proxy.mjs";
 
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com";
@@ -136,7 +136,10 @@ export function conversationKey(body) {
  */
 function createClaudeAdapter(catalogMap) {
   return {
-    contextWindow: CONTEXT_WINDOW_TOKENS,
+    // Sonnet, Opus, and Fable take 1M input tokens; only Haiku is still 200K (#41). Resolved
+    // against the tier in flight rather than one constant, so a fraction past 200K still
+    // discriminates a 300K conversation from an 800K one on the wider tiers.
+    contextWindow: contextWindowOf,
 
     statusId(body, key) {
       return sessionOf(body) || key;

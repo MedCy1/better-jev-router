@@ -152,6 +152,48 @@ test("the first turn has no prompt cache to protect, so a large opening message 
   assert.equal(seen[0].model, "claude-haiku-4-5-20251001", "first turn pinned to opus by the cache guard");
 });
 
+test("Jev sees each tier's real context window, not one shared constant (#41)", async (t) => {
+  const seen = [];
+  const choices = ["claude-haiku-4-5-20251001", "claude-opus-5"];
+  const upstream = http.createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.end(`{"id":"msg_1","type":"message","model":"${choices[0]}"}`);
+  });
+  await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  t.after(() => upstream.close());
+
+  const { port, close } = await startProxy({
+    upstreamURL: `http://127.0.0.1:${upstream.address().port}`,
+    route: async (input) => {
+      seen.push(input.contextWindow);
+      return { choice: choices.shift(), confidence: 0.9, ms: 1 };
+    },
+  });
+  t.after(close);
+
+  const conversationKey = "ctx-window-tiers";
+  const send = () =>
+    fetch(`http://127.0.0.1:${port}/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: "jev-router",
+        metadata: claudeMetadata(conversationKey),
+        tools: claudeTools,
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    });
+
+  // First turn: no cached tier yet, so the proxy asks with "opus" as current — 1M window.
+  await send();
+  assert.equal(seen[0], 1_000_000);
+
+  // Jev routed the first turn down to haiku, now cached as this conversation's tier. A
+  // second turn asks with "haiku" as current, whose real window is 200K, not 1M.
+  await send();
+  assert.equal(seen[1], 200_000, "current tier is now haiku, so its 200K window applies");
+});
+
 test("Claude proxy sends exact account models to Jev and routes the chosen version", async (t) => {
   const seen = [];
   const upstream = http.createServer((req, res) => {

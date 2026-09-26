@@ -31,7 +31,7 @@ export { routeTurn } from "../lib/route-turn.mjs";
  * @property {(modelCatalog: object, catalog: Map<string, object>) => void} [decorateModelCatalog]
  * @property {(res: import("node:http").ServerResponse, response: import("node:http").IncomingMessage, routing: object) => void} [decorateResponse]
  * @property {string | ((body: object, conversationKey: string) => string)} [statusId]
- * @property {number} contextWindow
+ * @property {number | ((tier: AdapterTier) => number)} contextWindow
  */
 
 const REQUIRED_FUNCTIONS = [
@@ -72,14 +72,15 @@ export function validateAdapter(adapter) {
     }
   }
 
+  // A fixed number when every tier shares one window, or a (tier) => number resolver for a
+  // harness whose tiers don't (#41: Claude's Haiku is 200K, Sonnet/Opus/Fable are 1M).
   const contextWindow = isObject ? adapter.contextWindow : undefined;
-  if (
-    typeof contextWindow !== "number" ||
-    !Number.isFinite(contextWindow) ||
-    contextWindow <= 0
-  ) {
+  const validContextWindow =
+    typeof contextWindow === "function" ||
+    (typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0);
+  if (!validContextWindow) {
     problems.push(
-      `contextWindow is required and must be a positive finite number (received ${typeOf(contextWindow)})`,
+      `contextWindow is required and must be a positive finite number, or a function returning one (received ${typeOf(contextWindow)})`,
     );
   }
 

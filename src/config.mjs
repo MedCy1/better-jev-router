@@ -55,6 +55,30 @@ export const downgradeCutoffTokens = () => {
   return Number.isSafeInteger(value) && value >= 0 ? value : DEFAULT_DOWNGRADE_CUTOFF_TOKENS;
 };
 
+/**
+ * Which Jev endpoint answers routing questions: the TypeSafe API (`typesafe`), the same
+ * model hosted on Cloudflare Workers AI (`cloudflare`), or the same model behind the
+ * Vercel AI Gateway (`vercel`). Explicit, never auto-detected, so a half-set token cannot
+ * silently switch providers.
+ */
+export const providerName = () => {
+  if (process.env.JEV_PROVIDER === "cloudflare") return "cloudflare";
+  if (process.env.JEV_PROVIDER === "vercel") return "vercel";
+  return "typesafe";
+};
+
+/** Whether the active provider has the credentials it needs. */
+export const hasCredentials = () => {
+  switch (providerName()) {
+    case "cloudflare":
+      return Boolean(process.env.CLOUDFLARE_API_TOKEN_JEV && process.env.CLOUDFLARE_ACCOUNT_ID);
+    case "vercel":
+      return Boolean(process.env.VERCEL_AI_GATEWAY_API_KEY_JEV);
+    default:
+      return Boolean(process.env.JEV_API_KEY || process.env.TYPESAFE_API_KEY);
+  }
+};
+
 export const THRESHOLDS = {
   /** Below this Jev confidence we refuse to downgrade and cap upgrades at `uncertainCeiling`. */
   minConfidence: 0.3,

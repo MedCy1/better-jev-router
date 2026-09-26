@@ -48,6 +48,18 @@ jev-claude
 jev-codex
 ```
 
+Routing decisions come from one of the following Jev providers, selected
+explicitly with `JEV_PROVIDER` (unset defaults to TypeSafe):
+
+| Provider | `JEV_PROVIDER` | Required credentials |
+| --- | --- | --- |
+| [TypeSafe](https://docs.typesafe.ai) | *(unset)* | `JEV_API_KEY` (or `TYPESAFE_API_KEY`) |
+| [Cloudflare Workers AI](https://developers.cloudflare.com/ai/models/typesafe/jev/) | `cloudflare` | `CLOUDFLARE_API_TOKEN_JEV` + `CLOUDFLARE_ACCOUNT_ID` |
+| [Vercel AI Gateway](https://vercel.com/ai-gateway/models/jev) | `vercel` | `VERCEL_AI_GATEWAY_API_KEY_JEV` |
+
+All credentials go in the same env file (`~/.jev-router.env`, `.env`, or the
+process environment).
+
 No Anthropic or OpenAI API key is required when the corresponding CLI is already logged in
 with a subscription. Every CLI argument is forwarded:
 
@@ -155,7 +167,7 @@ available from any repository without separate setup.
 
 Codex's footer shows `jev-router` because it displays the selected picker entry,
 not the model chosen behind that provider. If Jev is unavailable, the commentary names the
-fallback model and explains how to set `JEV_API_KEY`.
+fallback model and explains how to set routing credentials.
 
 ## How it works
 
@@ -204,8 +216,9 @@ sub-agents are pinned separately. Routing is fail-open: Jev failure never blocks
 
 | Variable | Interface | Effect |
 | --- | --- | --- |
-| `JEV_API_KEY` | Both | Enables routing. `TYPESAFE_API_KEY` also works. |
-| `TYPESAFE_BASE_URL` | Both | Sends routing decisions to another System-One server instead of `https://api.typesafe.ai`, for example a self-hosted [Laya](https://github.com/NandhaKishorM/laya) serving `POST /v1/systemone`. `JEV_API_KEY` is still required and is sent to that server as the bearer token. |
+| `JEV_API_KEY` | Both | Enables routing. `TYPESAFE_API_KEY` also works. Not needed in Cloudflare or Vercel mode. |
+| `JEV_PROVIDER` | Both | Route through a provider other than the TypeSafe API: `cloudflare` (Workers AI `typesafe/jev`, requires `CLOUDFLARE_API_TOKEN_JEV` and `CLOUDFLARE_ACCOUNT_ID`) or `vercel` (AI Gateway `typesafe-ai/jev`, requires `VERCEL_AI_GATEWAY_API_KEY_JEV`). |
+| `TYPESAFE_BASE_URL` | Both | Sends routing decisions to another System-One server instead of `https://api.typesafe.ai`, for example a self-hosted [Laya](https://github.com/NandhaKishorM/laya) serving `POST /v1/systemone`. `JEV_API_KEY` is still required and is sent to that server as the bearer token. Ignored when `JEV_PROVIDER` selects Cloudflare or Vercel. |
 | `JEV_ALLOW_FABLE` | Both | Enables the opt-in long tier. |
 | `JEV_DOWNGRADE_CUTOFF_TOKENS` | Both | Largest context that may still downgrade; defaults to `20000`. Set a larger value to permit downgrades in longer conversations. |
 | `JEV_DEBUG` | Both | Logs decisions and rewrites to `~/.jev-claude.log` in interactive sessions. |
@@ -250,14 +263,21 @@ node bin/jev-claude.mjs -p "what is 2+2?"
 node bin/jev-codex.mjs exec "what is 2+2?"
 ```
 
+`test/live-routing.mjs` sends four real prompts through the active provider.
+Set `JEV_PROVIDER=cloudflare` with `CLOUDFLARE_API_TOKEN_JEV` and
+`CLOUDFLARE_ACCOUNT_ID`, or `JEV_PROVIDER=vercel` with `VERCEL_AI_GATEWAY_API_KEY_JEV`
+(or leave `JEV_PROVIDER` unset with `JEV_API_KEY`) in `.env` to choose which
+endpoint it exercises.
+
 The test suite covers shared policy, both request formats, model rewriting, capability
 handling, settings restoration, Codex authentication forwarding, native model-picker
-injection, and decision display.
+injection, decision display, and the Cloudflare and Vercel provider envelopes.
 
 ## Limitations
 
-- The user's prompt text is sent to TypeSafe (or to `TYPESAFE_BASE_URL`, when set) for the routing
-  decision. Nothing else is.
+- The user's prompt text is sent to the active Jev provider (TypeSafe by default, or to
+  `TYPESAFE_BASE_URL` when set; Cloudflare Workers AI or Vercel AI Gateway with `JEV_PROVIDER`)
+  for the routing decision. Nothing else is.
 - A self-hosted Laya reports `confidence` as normalized entropy, `1 - H(p)/log k`, not as the chosen
   option's probability, so `THRESHOLDS.minConfidence` is read on that scale. Check it against
   your own server before relying on it.

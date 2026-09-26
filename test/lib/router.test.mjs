@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { askJev } from "../src/router.mjs";
-import { hasCredentials, providerName } from "../src/config.mjs";
+import { askJev } from "../../src/lib/router.mjs";
+import { hasCredentials, providerName } from "../../src/lib/config.mjs";
 
 const MODELS = [{ id: "claude-opus-5", tier: "opus", description: "Claude Opus 5" }];
 

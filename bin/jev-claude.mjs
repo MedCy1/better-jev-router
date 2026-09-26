@@ -5,10 +5,10 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startProxy } from "../src/proxy.mjs";
-import { AUTO_MODEL, hasCredentials } from "../src/config.mjs";
+import { AUTO_MODEL, hasCredentials } from "../src/lib/config.mjs";
 import { readSavedModel, restoreSavedModel } from "../src/settings.mjs";
-import { ensurePrivateDir } from "../src/status.mjs";
-import { LOG_FILE } from "../src/log.mjs";
+import { ensurePrivateDir } from "../src/lib/status.mjs";
+import { LOG_FILE } from "../src/lib/log.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = dirname(HERE);
